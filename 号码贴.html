@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>数字剪切表 · 多页A4 · 3列6行</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #e6e9f0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      font-family: 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+      padding: 24px 16px 40px;
+    }
+
+    .controls {
+      background: white;
+      padding: 20px 28px;
+      border-radius: 32px;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      gap: 20px 28px;
+      margin-bottom: 28px;
+      border: 1px solid #d0d7e5;
+      max-width: 1000px;
+    }
+
+    .control-group { display: flex; align-items: center; gap: 10px; }
+    .control-group label { font-weight: 500; color: #1e2b3c; font-size: 1rem; white-space: nowrap; }
+    .control-group input {
+      width: 100px; padding: 10px 12px; font-size: 1rem;
+      border: 1.5px solid #b8c3d4; border-radius: 18px;
+      outline: none; transition: 0.2s; text-align: center;
+      font-weight: 500; background: #fbfdff;
+    }
+    .control-group input:focus { border-color: #4a6fa5; box-shadow: 0 0 0 3px rgba(74, 111, 165, 0.15); }
+
+    .btn {
+      background: #1e3b5c; color: white; border: none;
+      padding: 12px 32px; border-radius: 40px; font-weight: 600;
+      font-size: 1rem; cursor: pointer; transition: 0.2s;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+      letter-spacing: 0.3px; display: inline-flex; align-items: center;
+      gap: 8px; border: 1px solid #0e1e2f; white-space: nowrap;
+    }
+    .btn:hover { background: #2b4f77; transform: scale(1.02); box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15); }
+    .btn:active { transform: scale(0.98); }
+    .btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+    .btn-pdf { background: #b22234; border-color: #7a1520; }
+    .btn-pdf:hover { background: #c92a3d; }
+
+    .preview-area {
+      display: flex; flex-direction: column; align-items: center;
+      gap: 28px; width: 100%;
+    }
+
+    .a4-sheet {
+      width: 210mm; height: 297mm; background: white;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
+      border-radius: 4px;
+      padding: 0;
+      page-break-after: always; break-inside: avoid;
+      position: relative;
+    }
+
+    .preview-cell {
+      position: absolute;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Courier New', 'Roboto Mono', 'Consolas', monospace;
+      font-weight: 700;
+      color: #000000;
+      line-height: 1;
+    }
+
+    .cell-font-large { font-size: 48pt; }
+    .cell-font-medium { font-size: 38pt; }
+    .cell-font-small { font-size: 28pt; }
+    .cell-font-tiny { font-size: 20pt; }
+
+    /* 预览区也用虚线辅助线，颜色很淡 */
+    .cut-line-v, .cut-line-h {
+      position: absolute;
+      border: none;
+      pointer-events: none;
+      z-index: 1;
+    }
+    .cut-line-v {
+      top: 0;
+      height: 100%;
+      border-left: 1px dashed #e0e0e0;
+    }
+    .cut-line-h {
+      left: 0;
+      width: 100%;
+      border-top: 1px dashed #e0e0e0;
+    }
+
+    .page-indicator {
+      text-align: center; color: #6b7f96; font-size: 0.85rem;
+      margin-top: -18px; margin-bottom: 10px;
+    }
+
+    @media print {
+      body { background: white; padding: 0; align-items: stretch; }
+      .controls, .hint, .page-indicator { display: none !important; }
+      .preview-area { gap: 0; }
+      .a4-sheet {
+        box-shadow: none; border-radius: 0;
+        padding: 0;
+        width: 210mm; height: 297mm;
+        page-break-after: always; break-inside: avoid; margin: 0 auto;
+      }
+      .cut-line-v, .cut-line-h {
+        border-color: #e8e8e8 !important;
+        -webkit-print-color-adjust: exact; print-color-adjust: exact;
+      }
+    }
+
+    .hint { margin-top: 12px; color: #4b5e73; font-size: 0.9rem; text-align: center; max-width: 700px; }
+
+    .info-badge {
+      background: #eef3fa; padding: 8px 18px; border-radius: 40px;
+      color: #1e3b5c; font-size: 0.9rem; font-weight: 500;
+      border: 1px solid #cdd9ea; margin-bottom: 8px;
+    }
+    .info-badge span { font-weight: 700; color: #b22234; }
+  </style>
+</head>
+<body>
+  <div class="controls">
+    <div class="control-group">
+      <label for="startNum">起始号</label>
+      <input type="number" id="startNum" value="1" min="0" step="1">
+    </div>
+    <div class="control-group">
+      <label for="endNum">结束号</label>
+      <input type="number" id="endNum" value="30" min="0" step="1">
+    </div>
+    <button class="btn" id="updateBtn">更新预览</button>
+    <button class="btn btn-pdf" id="pdfBtn">📄 生成PDF并保存</button>
+  </div>
+
+  <div class="info-badge" id="infoBadge">
+    当前范围：<span id="rangeDisplay">1 - 30</span> &nbsp;|&nbsp; 共 <span id="pageCountDisplay">30</span> 页
+  </div>
+
+  <div class="preview-area" id="previewArea"></div>
+
+  <div class="hint" id="hintText">
+    3列 × 6行 · 每页数字相同 · 起止号范围内每个数字生成一页
+  </div>
+
+  <script>
+    (function() {
+      const ROWS = 6;
+      const COLS = 3;
+
+      const startInput = document.getElementById('startNum');
+      const endInput = document.getElementById('endNum');
+      const updateBtn = document.getElementById('updateBtn');
+      const pdfBtn = document.getElementById('pdfBtn');
+      const previewArea = document.getElementById('previewArea');
+      const rangeDisplay = document.getElementById('rangeDisplay');
+      const pageCountDisplay = document.getElementById('pageCountDisplay');
+      const hintText = document.getElementById('hintText');
+
+      // 页面参数（mm）—— 三列六行等分整张纸
+      const PAGE_W = 210;
+      const PAGE_H = 297;
+      const CELL_W = PAGE_W / COLS;   // 70
+      const CELL_H = PAGE_H / ROWS;   // 49.5
+
+      // 裁剪线：等分线
+      function getVerticalCutLines() {
+        const lines = [];
+        for (let c = 0; c <= COLS; c++) lines.push(c * CELL_W);
+        return lines;
+      }
+      function getHorizontalCutLines() {
+        const lines = [];
+        for (let r = 0; r <= ROWS; r++) lines.push(r * CELL_H);
+        return lines;
+      }
+
+      // 每个单元格的中心
+      function getCellCenters() {
+        const centers = [];
+        for (let r = 0; r < ROWS; r++) {
+          for (let c = 0; c < COLS; c++) {
+            centers.push({
+              x: c * CELL_W + CELL_W / 2,
+              y: r * CELL_H + CELL_H / 2
+            });
+          }
+        }
+        return centers;
+      }
+
+      function getFontClass(num) {
+        const len = String(num).length;
+        if (len <= 2) return 'cell-font-large';
+        if (len === 3) return 'cell-font-medium';
+        if (len === 4) return 'cell-font-small';
+        return 'cell-font-tiny';
+      }
+
+      // 预览页：数字 + 虚线辅助线（仅预览显示，PDF 单独用 jsPDF 画虚线）
+      function createA4Page(number) {
+        const sheet = document.createElement('div');
+        sheet.className = 'a4-sheet';
+
+        const vLines = getVerticalCutLines();
+        const hLines = getHorizontalCutLines();
+        const centers = getCellCenters();
+
+        // 先画辅助线（在数字下层）
+        vLines.forEach(x => {
+          const line = document.createElement('div');
+          line.className = 'cut-line-v';
+          line.style.left = x + 'mm';
+          sheet.appendChild(line);
+        });
+        hLines.forEach(y => {
+          const line = document.createElement('div');
+          line.className = 'cut-line-h';
+          line.style.top = y + 'mm';
+          sheet.appendChild(line);
+        });
+
+        // 再画数字
+        centers.forEach((pos) => {
+          const cell = document.createElement('div');
+          cell.className = 'preview-cell';
+          cell.style.left = pos.x + 'mm';
+          cell.style.top = pos.y + 'mm';
+          cell.style.transform = 'translate(-50%, -50%)';
+          cell.style.width = CELL_W + 'mm';
+          cell.style.height = CELL_H + 'mm';
+          if (number !== '' && number !== null && number !== undefined) {
+            cell.textContent = number;
+            cell.classList.add(getFontClass(number));
+          }
+          sheet.appendChild(cell);
+        });
+
+        return sheet;
+      }
+
+      function parseInputs() {
+        let start = parseInt(startInput.value, 10);
+        let end = parseInt(endInput.value, 10);
+        if (isNaN(start)) start = 1;
+        if (isNaN(end)) end = 30;
+        if (start < 0) start = 0;
+        if (end < 0) end = 0;
+        if (start > end) {
+          const temp = start; start = end; end = temp;
+          startInput.value = start; endInput.value = end;
+        }
+        const count = end - start + 1;
+        const numbers = [];
+        for (let i = start; i <= end; i++) numbers.push(i);
+        return { start, end, count, numbers };
+      }
+
+      function updateAll() {
+        const { start, end, count, numbers } = parseInputs();
+
+        rangeDisplay.textContent = `${start} - ${end}`;
+        pageCountDisplay.textContent = count;
+        previewArea.innerHTML = '';
+
+        if (count > 500) {
+          hintText.textContent = `⚠️ 当前将生成 ${count} 页，数量较大，生成PDF可能需要较长时间。建议缩小范围。`;
+        } else {
+          hintText.textContent = `3列 × 6行 · 每页数字相同 · 起止号范围内每个数字生成一页（共 ${count} 页）`;
+        }
+
+        const PREVIEW_LIMIT = 30;
+
+        numbers.forEach((num, index) => {
+          if (index < PREVIEW_LIMIT) {
+            const previewPage = createA4Page(num);
+            previewArea.appendChild(previewPage);
+            const indicator = document.createElement('div');
+            indicator.className = 'page-indicator';
+            indicator.textContent = `第 ${index + 1} 页 · 数字 ${num}`;
+            previewArea.appendChild(indicator);
+          }
+        });
+
+        if (count > PREVIEW_LIMIT) {
+          const moreTip = document.createElement('div');
+          moreTip.className = 'info-badge';
+          moreTip.style.marginTop = '10px';
+          moreTip.textContent = `仅预览前 ${PREVIEW_LIMIT} 页，PDF将包含全部 ${count} 页。`;
+          previewArea.appendChild(moreTip);
+        }
+      }
+
+      updateBtn.addEventListener('click', updateAll);
+      startInput.addEventListener('keyup', (e) => { if (e.key === 'Enter') updateAll(); });
+      endInput.addEventListener('keyup', (e) => { if (e.key === 'Enter') updateAll(); });
+
+      // ========== PDF 生成：三列六行等分 + 极淡虚线辅助线 ==========
+      pdfBtn.addEventListener('click', async () => {
+        const { start, end, count, numbers } = parseInputs();
+
+        if (count === 0) { alert('请检查起止号。'); return; }
+
+        if (count > 300) {
+          if (!confirm(`即将生成 ${count} 页PDF，可能需要较长时间。是否继续？`)) return;
+        }
+
+        const JsPDF = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
+        if (!JsPDF) { alert('jsPDF 库未正确加载，请检查网络后刷新页面。'); return; }
+
+        pdfBtn.disabled = true;
+        const originalText = pdfBtn.textContent;
+        pdfBtn.textContent = '⏳ 正在生成...';
+
+        try {
+          const pdf = new JsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+
+          const hLines = getHorizontalCutLines();
+          const vLines = getVerticalCutLines();
+          const centers = getCellCenters();
+
+          // ===== 辅助线样式：极淡 + 虚线 =====
+          const LINE_GRAY = 230;          // RGB 230 ≈ #e6e6e6，非常淡
+          const LINE_WIDTH = 0.1;         // 0.1mm 细线
+          const DASH_PATTERN = [1.5, 1.5]; // 虚线段长 1.5mm，间隔 1.5mm
+
+          function getFontSize(num) {
+            const len = String(num).length;
+            if (len <= 2) return 60;
+            if (len === 3) return 46;
+            if (len === 4) return 34;
+            return 20;
+          }
+
+          for (let p = 0; p < numbers.length; p++) {
+            const num = numbers[p];
+            const numStr = String(num);
+            const fontSize = getFontSize(num);
+
+            pdfBtn.textContent = `⏳ 正在生成 ${p + 1}/${numbers.length}...`;
+
+            if (p > 0) pdf.addPage();
+
+            // ---- 1. 画虚线辅助线 ----
+            pdf.setDrawColor(LINE_GRAY, LINE_GRAY, LINE_GRAY);
+            pdf.setLineWidth(LINE_WIDTH);
+            pdf.setLineDashPattern(DASH_PATTERN, 0);
+
+            // 水平虚线
+            hLines.forEach(y => pdf.line(0, y, PAGE_W, y));
+            // 垂直虚线
+            vLines.forEach(x => pdf.line(x, 0, x, PAGE_H));
+
+            // 恢复实线（不影响后续可能画的其他元素）
+            pdf.setLineDashPattern([], 0);
+
+            // ---- 2. 绘制数字 ----
+            pdf.setFont('courier', 'bold');
+            pdf.setFontSize(fontSize);
+            pdf.setTextColor(0, 0, 0);
+
+            const Y_OFFSET = fontSize * 0.025;
+
+            centers.forEach((pos) => {
+              pdf.text(numStr, pos.x, pos.y + Y_OFFSET, {
+                align: 'center',
+                baseline: 'middle'
+              });
+            });
+          }
+
+          const filename = `数字${start}-${end}.pdf`;
+          pdf.save(filename);
+        } catch (err) {
+          console.error('PDF 生成失败:', err);
+          alert('PDF生成失败：' + err.message);
+        } finally {
+          pdfBtn.disabled = false;
+          pdfBtn.textContent = originalText;
+        }
+      });
+
+      window.addEventListener('load', () => {
+        startInput.value = 1;
+        endInput.value = 30;
+        updateAll();
+      });
+
+    })();
+  </script>
+</body>
+</html>
